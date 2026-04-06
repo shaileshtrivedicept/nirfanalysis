@@ -75,7 +75,7 @@ class TextParser:
     def extract_metadata(self, header_text, filename):
         """
         Improved metadata extraction:
-        1. Detect institute name from header.
+        1. Detect institute name from header/full text.
         2. Fallback to filename.
         3. Extract ID/Year from path or text.
         """
@@ -84,6 +84,9 @@ class TextParser:
             "institute_id": "Unknown",
             "year": "Unknown"
         }
+
+        # Ensure header_text is string
+        header_text = str(header_text or "")
 
         # 1. Year extraction (Path or Text)
         year_match = re.search(r"20\d{2}", filename + " " + header_text)
@@ -95,12 +98,12 @@ class TextParser:
         if id_match:
             metadata["institute_id"] = id_match.group(0)
 
-        # 3. Institute Name (from header)
+        # 3. Institute Name (from header/full text)
         lines = [l.strip() for l in header_text.split('\n') if l.strip()]
         if lines:
-            # Often the first line or line containing "INSTITUTION"
-            for line in lines[:3]:
-                if len(line) > 5 and not any(kw in line for kw in ["NIRF", "NATIONAL", "RANKING"]):
+            # Search for institute name in early lines, avoiding common noise
+            for line in lines[:10]:
+                if len(line) > 8 and not any(kw in line for kw in ["NIRF", "NATIONAL", "RANKING", "SCORE", "TOTAL", "PARAMETER", "CATEGORY"]):
                     metadata["institute_name"] = line
                     break
 

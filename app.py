@@ -37,6 +37,7 @@ def load_aggregator():
 
 # Sidebar options
 st.sidebar.header("Options")
+use_regions = st.sidebar.checkbox("Enable Region Splitting (Heuristic)", value=True, help="Splits image into Header (30%) and Table (70%). Disable for non-standard layouts.")
 show_regions = st.sidebar.checkbox("Show Preprocessed Regions", value=False)
 full_fallback = st.sidebar.checkbox("Full Image Fallback (if region fails)", value=True)
 
@@ -66,7 +67,8 @@ if uploaded_files:
 
         try:
             # 1. OCR Extraction
-            header_text, table_text, ocr_confidence, (h_img, t_img) = extractor.extract_text(tmp_path)
+            # We pass use_regions (preprocess) to extraction
+            header_text, table_text, ocr_confidence, (h_img, t_img) = extractor.extract_text(tmp_path, preprocess=use_regions)
 
             if show_regions and h_img is not None and t_img is not None:
                 with st.expander(f"Preprocessed Regions: {filename}"):
@@ -79,14 +81,22 @@ if uploaded_files:
             # 2. Text Parsing
             extracted_tokens = text_parser.parse_text(cleaned_table)
 
-            # P10 Fallback: if region extraction yields nothing, try full image (if enabled)
-            if not extracted_tokens and full_fallback:
+            # Combine text for metadata if using regions
+            combined_text = (cleaned_header + "\n" + cleaned_table).strip()
+
+            # P10 Fallback: if region extraction yields nothing, try full image (if enabled and we weren't already doing full)
+            if not extracted_tokens and full_fallback and use_regions:
                 status_text.text(f"Region extraction failed for {filename}, trying full image...")
                 _, full_text, _ = extractor._extract_full_text(Image.open(tmp_path))
                 cleaned_full = extractor.context_aware_cleanup(full_text)
                 extracted_tokens = text_parser.parse_text(cleaned_full)
+                combined_text = cleaned_full
 
-            metadata = text_parser.extract_metadata(cleaned_header, filename)
+            # If we didn't use regions, cleaned_table is the full text
+            if not use_regions:
+                combined_text = cleaned_table
+
+            metadata = text_parser.extract_metadata(combined_text, filename)
             metadata["source_file"] = filename
 
             # 3. Schema Mapping
@@ -143,6 +153,6 @@ if uploaded_files:
             st.download_button("Duplicate Conflicts (CSV)", to_csv(duplicate_conflicts), "duplicate_conflicts.csv", "text/csv", key="dl_duplicates")
 
     else:
-        st.warning("No data extracted. Ensure the uploaded images are NIRF score tables.")
+        st.warning("No data extracted. Ensure the uploaded images are NIRF score tables. Try disabling 'Region Splitting' in the sidebar.")
 else:
     st.info("Please upload one or more images to begin extraction.")
