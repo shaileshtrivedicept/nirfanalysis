@@ -33,6 +33,14 @@ A robust, end-to-end image-to-dataset extraction pipeline for NIRF-style institu
 python3 -m src.main --input-dir data/raw --output-dir data/processed --save-debug-crops
 ```
 
+### Streamlit Application
+
+For a user-friendly interface to upload images and download extraction results:
+
+```bash
+streamlit run app.py
+```
+
 ## Validation Rules
 
 - `Score` and `Total` must be numeric.
