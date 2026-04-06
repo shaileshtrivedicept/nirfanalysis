@@ -2,14 +2,13 @@ import pytesseract
 from PIL import Image
 import os
 import cv2
+import re
 from src.ocr.preprocess import preprocess_image
 
 class OCRExtractor:
     def __init__(self, engine="tesseract"):
         self.engine = engine.lower()
         if self.engine == "tesseract":
-            # For local installations, if tesseract is not in PATH, set:
-            # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
             pass
         elif self.engine == "paddle":
             try:
@@ -21,64 +20,94 @@ class OCRExtractor:
 
     def extract_text(self, image_path, preprocess=True, save_debug=False, debug_dir=None):
         """
-        Extract text from an image.
+        Extract text from header and table regions of an image.
+        Returns (header_text, table_text, overall_confidence)
         """
         if preprocess:
-            processed_img = preprocess_image(image_path, save_debug=save_debug, debug_dir=debug_dir)
-            if processed_img is not None:
-                # Convert cv2 image back to PIL for pytesseract if needed
-                pil_img = Image.fromarray(processed_img)
+            header_img, table_img = preprocess_image(image_path, save_debug=save_debug, debug_dir=debug_dir)
+            if header_img is not None and table_img is not None:
+                pil_header = Image.fromarray(header_img)
+                pil_table = Image.fromarray(table_img)
             else:
-                pil_img = Image.open(image_path)
+                # Fallback to simple load if preprocess fails
+                img = Image.open(image_path)
+                return self._extract_full_text(img)
         else:
-            pil_img = Image.open(image_path)
+            img = Image.open(image_path)
+            return self._extract_full_text(img)
 
         if self.engine == "tesseract":
-            text = pytesseract.image_to_string(pil_img)
-            confidence = 0.8  # Tesseract doesn't give straightforward overall confidence for a block
-            return text, confidence
+            header_text = pytesseract.image_to_string(pil_header)
+            table_text = pytesseract.image_to_string(pil_table)
+
+            # Simplified confidence (Tesseract doesn't provide it directly here)
+            # A production-ready version would use image_to_data
+            confidence = 0.85
+            return header_text, table_text, confidence
+
         elif self.engine == "paddle":
-            # Implementation for PaddleOCR (example)
-            result = self.ocr.ocr(image_path, cls=True)
-            text = "\n".join([line[1][0] for res in result for line in res])
-            confidence = sum([line[1][1] for res in result for line in res]) / len(result) if result else 0
-            return text, confidence
+            # Simplified example for PaddleOCR on regions
+            res_header = self.ocr.ocr(cv2.cvtColor(header_img, cv2.COLOR_GRAY2BGR), cls=True)
+            res_table = self.ocr.ocr(cv2.cvtColor(table_img, cv2.COLOR_GRAY2BGR), cls=True)
+
+            header_text = "\n".join([line[1][0] for res in res_header for line in res]) if res_header else ""
+            table_text = "\n".join([line[1][0] for res in res_table for line in res]) if res_table else ""
+
+            conf_h = sum([line[1][1] for res in res_header for line in res]) / len(res_header) if res_header else 0.8
+            conf_t = sum([line[1][1] for res in res_table for line in res]) / len(res_table) if res_table else 0.8
+
+            return header_text, table_text, (conf_h + conf_t) / 2
         else:
             raise ValueError(f"Unsupported OCR engine: {self.engine}")
 
+    def _extract_full_text(self, pil_img):
+        """Helper to extract text from a full image."""
+        if self.engine == "tesseract":
+            return "", pytesseract.image_to_string(pil_img), 0.8
+        return "", "", 0.0
+
     @staticmethod
     def basic_cleanup(text):
+        """Deprecated: use context_aware_cleanup instead."""
+        return OCRExtractor.context_aware_cleanup(text)
+
+    @staticmethod
+    def context_aware_cleanup(text):
         """
-        Perform basic cleanup on extracted text to correct common OCR errors.
+        Perform context-aware cleanup on extracted text.
+        Preserves original OCR text while applying targeted corrections.
         """
-        # Fix O ↔ 0, I ↔ 1 only in contexts that look like numbers if possible
-        # We can use a simple regex-based replacement for digits misread as letters
-        # but only in numeric contexts (e.g. following a subcategory)
+        if not text:
+            return ""
 
-        # General subcategory replacements
-        corrections = {
-            "FPFP": "FPPP",
-            "FPPF": "FPPP",
-            "FP PP": "FPPP",
-            "TL R": "TLR",
-            "GO ": "GO", # sometimes spaces creep in
-            "O1": "OI",
-            "0I": "OI",
-            "PR ": "PR"
-        }
-        for wrong, right in corrections.items():
-            text = text.replace(wrong, right)
+        lines = text.split('\n')
+        cleaned_lines = []
 
-        # Standardizing OCR results
-        text = text.upper()
+        for line in lines:
+            # 1. Standardize spacing and casing
+            line = line.strip().upper()
 
-        # Common digit misreads
-        # (Simplified implementation: replace in the entire text,
-        # but focusing on characters commonly misread by Tesseract)
-        text = text.replace('O', '0').replace('I', '1').replace('S', '5').replace('G', '6')
+            # 2. Targeted subcategory label correction (FPPP commonly misread)
+            line = re.sub(r'FP[FSP][FP]', 'FPPP', line)
+            line = re.sub(r'TL[ \-]R', 'TLR', line)
 
-        # NOTE: Replacing letters with numbers globally may break category names (e.g., GO -> 60)
-        # In a real-world scenario, we would use more targeted regex like:
-        # text = re.sub(r'(\d)[OI](\d)', r'\1\2', text)
+            # 3. Context-aware digit correction using regex
+            # Only replace O with 0 or I with 1 when they are adjacent to digits
+            # and within a numeric context (e.g., 5O.5 -> 50.5)
+            line = re.sub(r'(\d)[O0o](\d)', r'\1 0 \2', line) # temporarily separate to avoid multiple replacements
+            line = line.replace(' 0 ', '0')
+            line = re.sub(r'(\d)[O0o]', r'\1 0', line)
+            line = line.replace(' 0', '0')
+            line = re.sub(r'[O0o](\d)', r'0 \1', line)
+            line = line.replace('0 ', '0')
 
-        return text
+            line = re.sub(r'(\d)[I1l](\d)', r'\1 1 \2', line)
+            line = line.replace(' 1 ', '1')
+            line = re.sub(r'(\d)[I1l]', r'\1 1', line)
+            line = line.replace(' 1', '1')
+            line = re.sub(r'[I1l](\d)', r'1 \1', line)
+            line = line.replace('1 ', '1')
+
+            cleaned_lines.append(line)
+
+        return "\n".join(cleaned_lines)

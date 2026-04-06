@@ -37,8 +37,9 @@ class SchemaMapper:
 
     def calculate_normalized(self, score, total):
         """
-        Normalize scores (usually score/total * 100).
+        Normalize scores (score / total).
         """
         if total and total > 0:
-            return round((score / total) * 100, 2)
+            # P7: normalized_score = score / total (NOT multiplied by 100)
+            return round((score / total), 4)
         return None

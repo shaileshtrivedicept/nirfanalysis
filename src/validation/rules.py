@@ -2,26 +2,34 @@ from src.config import CATEGORIES
 
 def get_expected_subcategories():
     """
-    Flat list of all valid subcategories.
+    Flat list of all valid subcategories in expected order.
     """
-    return [sub for subs in CATEGORIES.values() for sub in subs]
+    expected = []
+    for cat in ["TLR", "RP", "GO", "OI", "PR"]:
+        expected.extend(CATEGORIES.get(cat, []))
+    return expected
 
-def validate_score(score):
+def validate_score_total_consistency(score, total):
     """
-    Score must be numeric and >= 0.
+    Rule: Score <= Total.
+    """
+    if score is None or total is None:
+        return True
+    return score <= total
+
+def validate_numeric(val):
+    """
+    Check if value is numeric and >= 0.
     """
     try:
-        val = float(score)
-        return val >= 0
+        fval = float(val)
+        return fval >= 0
     except (TypeError, ValueError):
         return False
 
-def validate_total(total):
+def get_subcategory_sanity_range(subcategory):
     """
-    Total must be numeric and > 0.
+    Define sanity ranges for totals/scores (example).
     """
-    try:
-        val = float(total)
-        return val > 0
-    except (TypeError, ValueError):
-        return False
+    # Most subcategories are out of 100 or 50.
+    return (0, 101)

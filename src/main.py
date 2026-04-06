@@ -29,7 +29,8 @@ def main():
 
     # Setup
     ensure_dir(args.output_dir)
-    logger = setup_logger(level=args.log_level)
+    log_file = os.path.join(args.output_dir, LOG_FILENAME)
+    logger = setup_logger(log_file=log_file, level=args.log_level)
     logger.info("Starting NIRF Extraction Pipeline")
 
     extractor = OCRExtractor(engine=args.ocr_engine)
@@ -55,14 +56,15 @@ def main():
         try:
             # 1. OCR Extraction
             debug_dir = os.path.join(args.output_dir, "debug_crops") if args.save_debug_crops else None
-            raw_text, ocr_confidence = extractor.extract_text(
+            header_text, table_text, ocr_confidence = extractor.extract_text(
                 img_path, save_debug=args.save_debug_crops, debug_dir=debug_dir
             )
-            cleaned_text = extractor.basic_cleanup(raw_text)
+            cleaned_header = extractor.context_aware_cleanup(header_text)
+            cleaned_table = extractor.context_aware_cleanup(table_text)
 
             # 2. Text Parsing
-            extracted_tokens = text_parser.parse_text(cleaned_text)
-            metadata = text_parser.extract_metadata(cleaned_text, filename)
+            extracted_tokens = text_parser.parse_text(cleaned_table)
+            metadata = text_parser.extract_metadata(cleaned_header, filename)
             metadata["source_file"] = filename
 
             # 3. Schema Mapping
@@ -85,8 +87,19 @@ def main():
     logger.info("Exporting results...")
     writer.export_csv(master_long_data, MASTER_LONG_FILENAME)
 
-    wide_data = aggregator.aggregate_wide(master_long_data)
+    wide_data, duplicate_conflicts = aggregator.aggregate_wide(master_long_data)
     writer.export_csv(wide_data, WIDE_SUMMARY_FILENAME)
+    writer.export_csv(duplicate_conflicts, "duplicate_conflicts.csv") # P5
+
+    # P10: Benchmarking Outputs
+    category_summary = aggregator.aggregate_category_summary(master_long_data)
+    writer.export_csv(category_summary, "category_summary.csv")
+
+    final_scores = aggregator.calculate_final_scores(category_summary)
+    writer.export_csv(final_scores, "final_score.csv")
+
+    quality_report = aggregator.generate_quality_report(master_long_data)
+    writer.export_csv(quality_report, "extraction_quality_report.csv")
 
     writer.export_csv(all_manual_review, MANUAL_REVIEW_FILENAME)
     writer.export_csv(failed_files, FAILED_FILES_FILENAME)

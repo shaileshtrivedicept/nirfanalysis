@@ -1,16 +1,19 @@
 import os
 import shutil
+from pathlib import Path
 
 def get_image_files(directory):
     """
-    Retrieves all image files (jpg, jpeg, png) from a directory.
+    Retrieves all image files (jpg, jpeg, png) from a directory recursively.
     """
-    image_extensions = (".jpg", ".jpeg", ".png")
-    return [
-        os.path.join(directory, f)
-        for f in os.listdir(directory)
-        if f.lower().endswith(image_extensions)
-    ]
+    image_extensions = ("*.jpg", "*.jpeg", "*.png")
+    path = Path(directory)
+    image_files = []
+    for ext in image_extensions:
+        image_files.extend(list(path.rglob(ext)))
+
+    # Sort for consistency
+    return sorted([str(f) for f in image_files])
 
 def ensure_dir(directory):
     """
