@@ -43,21 +43,24 @@ class OCRExtractor:
     def extract_text(self, image_path, preprocess=True, save_debug=False, debug_dir=None):
         """
         Extract text from header and table regions of an image.
-        Returns (header_text, table_text, overall_confidence)
+        Returns (header_text, table_text, overall_confidence, (header_img, table_img))
         """
+        header_img, table_img = None, None
         if preprocess:
             header_img, table_img = preprocess_image(image_path, save_debug=save_debug, debug_dir=debug_dir)
             if header_img is None or table_img is None:
                 img = Image.open(image_path)
-                return self._extract_full_text(img)
+                header, table, conf = self._extract_full_text(img)
+                return header, table, conf, (None, None)
         else:
             img = Image.open(image_path)
-            return self._extract_full_text(img)
+            header, table, conf = self._extract_full_text(img)
+            return header, table, conf, (None, None)
 
         if self.engine == "tesseract":
             header_text = pytesseract.image_to_string(Image.fromarray(header_img))
             table_text = pytesseract.image_to_string(Image.fromarray(table_img))
-            return header_text, table_text, 0.85
+            return header_text, table_text, 0.85, (header_img, table_img)
 
         elif self.engine == "easyocr":
             if self.easyocr_reader:
@@ -70,7 +73,7 @@ class OCRExtractor:
                 conf_h = sum([prob for (bbox, text, prob) in res_header]) / len(res_header) if res_header else 0.8
                 conf_t = sum([prob for (bbox, text, prob) in res_table]) / len(res_table) if res_table else 0.8
 
-                return header_text, table_text, (conf_h + conf_t) / 2
+                return header_text, table_text, (conf_h + conf_t) / 2, (header_img, table_img)
             return "", "", 0.0
 
         elif self.engine == "paddle":
@@ -84,7 +87,7 @@ class OCRExtractor:
             conf_h = sum([line[1][1] for res in res_header for line in res]) / len(res_header) if res_header else 0.8
             conf_t = sum([line[1][1] for res in res_table for line in res]) / len(res_table) if res_table else 0.8
 
-            return header_text, table_text, (conf_h + conf_t) / 2
+            return header_text, table_text, (conf_h + conf_t) / 2, (header_img, table_img)
         else:
             raise ValueError(f"Unsupported OCR engine: {self.engine}")
 

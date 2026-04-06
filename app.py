@@ -35,6 +35,11 @@ def load_validator():
 def load_aggregator():
     return DatasetAggregator()
 
+# Sidebar options
+st.sidebar.header("Options")
+show_regions = st.sidebar.checkbox("Show Preprocessed Regions", value=False)
+full_fallback = st.sidebar.checkbox("Full Image Fallback (if region fails)", value=True)
+
 uploaded_files = st.file_uploader("Upload images (JPG, PNG)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
 if uploaded_files:
@@ -55,19 +60,32 @@ if uploaded_files:
         filename = uploaded_file.name
         status_text.text(f"Processing {filename}...")
 
-        # Save to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp:
             tmp.write(uploaded_file.getvalue())
             tmp_path = tmp.name
 
         try:
             # 1. OCR Extraction
-            header_text, table_text, ocr_confidence = extractor.extract_text(tmp_path)
+            header_text, table_text, ocr_confidence, (h_img, t_img) = extractor.extract_text(tmp_path)
+
+            if show_regions and h_img is not None and t_img is not None:
+                with st.expander(f"Preprocessed Regions: {filename}"):
+                    st.image(h_img, caption="Header Region")
+                    st.image(t_img, caption="Table Region")
+
             cleaned_header = extractor.context_aware_cleanup(header_text)
             cleaned_table = extractor.context_aware_cleanup(table_text)
 
             # 2. Text Parsing
             extracted_tokens = text_parser.parse_text(cleaned_table)
+
+            # P10 Fallback: if region extraction yields nothing, try full image (if enabled)
+            if not extracted_tokens and full_fallback:
+                status_text.text(f"Region extraction failed for {filename}, trying full image...")
+                _, full_text, _ = extractor._extract_full_text(Image.open(tmp_path))
+                cleaned_full = extractor.context_aware_cleanup(full_text)
+                extracted_tokens = text_parser.parse_text(cleaned_full)
+
             metadata = text_parser.extract_metadata(cleaned_header, filename)
             metadata["source_file"] = filename
 
@@ -109,7 +127,7 @@ if uploaded_files:
             return pd.DataFrame(data).to_csv(index=False).encode('utf-8')
 
         with col1:
-            st.download_button("Master Long Dataset (CSV)", to_csv(master_long_data), "master_long_dataset.csv", "text/csv", key="dl_master")
+            st.download_button("Master Long (CSV)", to_csv(master_long_data), "master_long_dataset.csv", "text/csv", key="dl_master")
             st.download_button("Wide Summary (CSV)", to_csv(wide_data), "wide_summary.csv", "text/csv", key="dl_wide")
 
         with col2:
@@ -117,11 +135,11 @@ if uploaded_files:
             st.download_button("Final Scores (CSV)", to_csv(final_scores), "final_score.csv", "text/csv", key="dl_final")
 
         with col3:
-            st.download_button("Manual Review Flagged (CSV)", to_csv(all_manual_review), "manual_review.csv", "text/csv", key="dl_manual")
+            st.download_button("Manual Review (CSV)", to_csv(all_manual_review), "manual_review.csv", "text/csv", key="dl_manual")
             st.download_button("Quality Report (CSV)", to_csv(quality_report), "extraction_quality_report.csv", "text/csv", key="dl_quality")
 
         if duplicate_conflicts:
-            st.warning(f"⚠️ {len(duplicate_conflicts)} Duplicate conflicts detected. Check manual_review.csv.")
+            st.warning(f"⚠️ {len(duplicate_conflicts)} Duplicate conflicts detected.")
             st.download_button("Duplicate Conflicts (CSV)", to_csv(duplicate_conflicts), "duplicate_conflicts.csv", "text/csv", key="dl_duplicates")
 
     else:

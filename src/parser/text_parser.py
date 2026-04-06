@@ -35,9 +35,10 @@ class TextParser:
 
             # Simple heuristic: Identify if line is a "Score" or "Total" row
             # Usually NIRF tables have rows labeled "Score" and "Total"
-            if "SCORE" in line and not any(sub in line for sub in self.all_subcategories):
+            # Handling common misreads: 5CORE, 707AL, etc.
+            if any(kw in line for kw in ["SCORE", "5CORE", "SC0RE"]) and not any(sub in line for sub in self.all_subcategories):
                  score_numbers.extend([float(n) for n in numbers])
-            elif "TOTAL" in line and not any(sub in line for sub in self.all_subcategories):
+            elif any(kw in line for kw in ["TOTAL", "707AL", "T0TAL"]) and not any(sub in line for sub in self.all_subcategories):
                  total_numbers.extend([float(n) for n in numbers])
 
             # Fallback: if a line contains a subcategory name AND numbers
@@ -45,7 +46,7 @@ class TextParser:
             match, score, index = process.extractOne(
                 line, self.all_subcategories, scorer=fuzz.partial_ratio
             )
-            if score > 85:
+            if score > 75: # Lowered threshold slightly for better recall on noisy text
                 # If we haven't found a separate Score row, we can use these
                 if numbers:
                     extracted_score = float(numbers[0])
