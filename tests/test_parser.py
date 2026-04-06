@@ -46,3 +46,17 @@ def test_parse_text_noisy_fallback():
     ss_row = next((r for r in results if r['subcategory'] == "SS"), None)
     assert ss_row is not None
     assert ss_row['score'] == 50.5
+
+def test_parse_text_first_column_bug():
+    parser = TextParser()
+    # Mock messy OCR where same numbers might appear or be mis-parsed
+    sample_text = """
+    STUDENT STRENGTH (SS) 50.5 100
+    FACULTY STUDENT RATIO (FSR) 40.0 100
+    """
+    results = parser.parse_text(sample_text)
+    ss_row = next(r for r in results if r['subcategory'] == "SS")
+    fsr_row = next(r for r in results if r['subcategory'] == "FSR")
+
+    assert ss_row['score'] == 50.5
+    assert fsr_row['score'] == 40.0

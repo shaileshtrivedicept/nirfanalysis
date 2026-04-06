@@ -55,17 +55,18 @@ class TextParser:
             # Simple heuristic: Identify if line is a "Score" or "Total" row
             # Usually NIRF tables have rows labeled "Score" and "Total"
             # Handling common misreads: 5CORE, 707AL, etc.
-            if any(kw in line for kw in ["SCORE", "5CORE", "SC0RE"]) and not any(sub in line for sub in self.all_subcategories):
+            # Using broader keyword list and ensuring it's not a subcategory label line
+            if any(kw in line for kw in ["SCORE", "5CORE", "SC0RE", "SCRE", "POINTS"]) and not any(sub in line for sub in self.all_subcategories):
                  score_numbers.extend([float(n) for n in numbers])
-            elif any(kw in line for kw in ["TOTAL", "707AL", "T0TAL"]) and not any(sub in line for sub in self.all_subcategories):
+            elif any(kw in line for kw in ["TOTAL", "707AL", "T0TAL", "TOT", "TTL"]) and not any(sub in line for sub in self.all_subcategories):
                  total_numbers.extend([float(n) for n in numbers])
 
             # Fallback: if a line contains a subcategory name AND numbers
             # (Merged line case)
             match, score, index = process.extractOne(
-                line, self.all_subcategories, scorer=fuzz.partial_ratio
+                line, self.all_subcategories, scorer=fuzz.WRatio
             )
-            if score > 75: # Lowered threshold slightly for better recall on noisy text
+            if score > 80: # Using WRatio with slightly higher threshold for better label matching
                 # If we haven't found a separate Score row, we can use these
                 if numbers:
                     extracted_score = float(numbers[0])
@@ -92,23 +93,42 @@ class TextParser:
         # Global Search fallback: if we still have nothing, try finding all keywords and the next number
         if not results:
              all_text = table_text.replace('\n', ' ')
+             # track consumed content to avoid re-reading same numbers
+             last_idx = 0
              for sub in self.subcategory_order:
-                 long_name = self.subcategory_long_names.get(sub, "")
+                 long_name = self.subcategory_long_names.get(sub, "").upper()
+                 best_idx = -1
                  # Try short code then long name
                  for term in [sub, long_name]:
                      if not term: continue
-                     idx = all_text.find(term)
+                     # Use word boundary search for short codes
+                     if len(term) <= 4:
+                         match = re.search(r'\b' + re.escape(term) + r'\b', all_text[last_idx:])
+                         idx = match.start() + last_idx if match else -1
+                     else:
+                         idx = all_text.find(term, last_idx)
+
                      if idx != -1:
-                         # Find numbers after this index
-                         numbers = re.findall(r"[-+]?\d*\.\d+|\d+", all_text[idx:])
-                         if numbers:
-                             results.append({
-                                 "subcategory": sub,
-                                 "score": float(numbers[0]),
-                                 "total": float(numbers[1]) if len(numbers) > 1 else None,
-                                 "confidence": 0.7
-                             })
-                             break # found this sub
+                         best_idx = idx
+                         break
+
+                 if best_idx != -1:
+                     # Find numbers after this index but BEFORE next keyword if possible
+                     search_area = all_text[best_idx:]
+                     numbers = re.findall(r"[-+]?\d*\.\d+|\d+", search_area)
+                     if numbers:
+                         results.append({
+                             "subcategory": sub,
+                             "score": float(numbers[0]),
+                             "total": float(numbers[1]) if len(numbers) > 1 else None,
+                             "confidence": 0.7
+                         })
+                         # Update last_idx to consume this part of text
+                         # This avoids reading the first column values for all labels
+                         # Find position of the first number in the search_area
+                         num_match = re.search(re.escape(numbers[0]), search_area)
+                         if num_match:
+                             last_idx = best_idx + num_match.end()
 
         return results
 
