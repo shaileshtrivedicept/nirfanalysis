@@ -12,6 +12,25 @@ class TextParser:
         for cat in ["TLR", "RP", "GO", "OI", "PR"]:
             self.subcategory_order.extend(categories.get(cat, []))
 
+        # Dictionary of long names for better fuzzy matching
+        self.subcategory_long_names = {
+            "SS": "Student Strength",
+            "FSR": "Faculty Student Ratio",
+            "FQE": "Faculty Quality and Experience",
+            "FRU": "Financial Resources and Their Utilisation",
+            "PU": "Publications",
+            "QP": "Quality of Publications",
+            "FPPP": "Footprint of Projects and Professional Practice",
+            "GPH": "Graduation Post Graduate and Higher Studies",
+            "GUE": "University Examinations",
+            "MS": "Median Salary",
+            "RD": "Region Diversity",
+            "WD": "Women Diversity",
+            "ESCS": "Economically and Socially Challenged Students",
+            "PCS": "Facilities for Physically Challenged Students",
+            "PR": "Peer Perception"
+        }
+
     def parse_text(self, table_text):
         """
         Structure-aware parsing:
@@ -69,6 +88,27 @@ class TextParser:
                          "total": total,
                          "confidence": 0.9
                      })
+
+        # Global Search fallback: if we still have nothing, try finding all keywords and the next number
+        if not results:
+             all_text = table_text.replace('\n', ' ')
+             for sub in self.subcategory_order:
+                 long_name = self.subcategory_long_names.get(sub, "")
+                 # Try short code then long name
+                 for term in [sub, long_name]:
+                     if not term: continue
+                     idx = all_text.find(term)
+                     if idx != -1:
+                         # Find numbers after this index
+                         numbers = re.findall(r"[-+]?\d*\.\d+|\d+", all_text[idx:])
+                         if numbers:
+                             results.append({
+                                 "subcategory": sub,
+                                 "score": float(numbers[0]),
+                                 "total": float(numbers[1]) if len(numbers) > 1 else None,
+                                 "confidence": 0.7
+                             })
+                             break # found this sub
 
         return results
 

@@ -39,6 +39,7 @@ def load_aggregator():
 st.sidebar.header("Options")
 use_regions = st.sidebar.checkbox("Enable Region Splitting (Heuristic)", value=True, help="Splits image into Header (30%) and Table (70%). Disable for non-standard layouts.")
 show_regions = st.sidebar.checkbox("Show Preprocessed Regions", value=False)
+show_raw_text = st.sidebar.checkbox("Show Raw Extracted Text", value=False)
 full_fallback = st.sidebar.checkbox("Full Image Fallback (if region fails)", value=True)
 
 uploaded_files = st.file_uploader("Upload images (JPG, PNG)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
@@ -71,9 +72,16 @@ if uploaded_files:
             header_text, table_text, ocr_confidence, (h_img, t_img) = extractor.extract_text(tmp_path, preprocess=use_regions)
 
             if show_regions and h_img is not None and t_img is not None:
-                with st.expander(f"Preprocessed Regions: {filename}"):
+                with st.expander(f"🖼️ Preprocessed Regions: {filename}"):
                     st.image(h_img, caption="Header Region")
                     st.image(t_img, caption="Table Region")
+
+            if show_raw_text:
+                with st.expander(f"📝 Raw OCR Text: {filename}"):
+                    st.text("--- Header ---")
+                    st.text(header_text)
+                    st.text("--- Table ---")
+                    st.text(table_text)
 
             cleaned_header = extractor.context_aware_cleanup(header_text)
             cleaned_table = extractor.context_aware_cleanup(table_text)

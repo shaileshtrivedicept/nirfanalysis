@@ -19,7 +19,8 @@ class OCRExtractor:
         if self.engine == "easyocr":
             try:
                 import easyocr
-                self.easyocr_reader = easyocr.Reader(['en'])
+                # Enable gpu=False explicitly for CPU environments to avoid any hangs or errors
+                self.easyocr_reader = easyocr.Reader(['en'], gpu=False, download_enabled=True)
             except ImportError:
                 print("EasyOCR not installed. OCR will fail.")
 

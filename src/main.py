@@ -56,7 +56,7 @@ def main():
         try:
             # 1. OCR Extraction
             debug_dir = os.path.join(args.output_dir, "debug_crops") if args.save_debug_crops else None
-            header_text, table_text, ocr_confidence = extractor.extract_text(
+            header_text, table_text, ocr_confidence, _ = extractor.extract_text(
                 img_path, save_debug=args.save_debug_crops, debug_dir=debug_dir
             )
             cleaned_header = extractor.context_aware_cleanup(header_text)

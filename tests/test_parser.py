@@ -30,3 +30,19 @@ def test_extract_metadata_improved():
     assert metadata["institute_id"] == "IR-E-U-0123"
     assert metadata["year"] == "2023"
     assert "INDIAN INSTITUTE OF TECHNOLOGY" in metadata["institute_name"]
+
+def test_parse_text_noisy_fallback():
+    parser = TextParser()
+    # scattered text where subcategory and score are far apart or on new lines
+    sample_text = """
+    NIRF 2024 REPORT
+    SOME NOISE HERE
+    STUDENT STRENGTH (SS)
+    MANY LINES LATER
+    50.5
+    100.0
+    """
+    results = parser.parse_text(sample_text)
+    ss_row = next((r for r in results if r['subcategory'] == "SS"), None)
+    assert ss_row is not None
+    assert ss_row['score'] == 50.5

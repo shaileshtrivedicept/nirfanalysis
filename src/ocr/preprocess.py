@@ -28,11 +28,12 @@ def preprocess_image(image_path, save_debug=False, debug_dir=None):
     h, w = enhanced.shape
 
     # Safety check for dimensions
-    if h < 100 or w < 100:
+    # For very low resolution images, don't attempt splitting as it may crop through the table
+    if h < 400 or w < 400:
         return enhanced, enhanced
 
-    header_region = enhanced[0:max(1, int(h*0.3)), 0:w] # Top 30%
-    table_region = enhanced[max(1, int(h*0.3)):h, 0:w] # Bottom 70%
+    header_region = enhanced[0:max(1, int(h*0.25)), 0:w] # Top 25% (header usually smaller)
+    table_region = enhanced[max(1, int(h*0.25)):h, 0:w] # Bottom 75%
 
     # Deskew (simplified logic using minAreaRect)
     deskewed_table = desk_image(table_region)
