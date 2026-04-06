@@ -4,7 +4,7 @@ import sys
 from src.config import (
     RAW_DATA_DIR, PROCESSED_DATA_DIR, DEFAULT_OCR_ENGINE,
     MASTER_LONG_FILENAME, WIDE_SUMMARY_FILENAME,
-    MANUAL_REVIEW_FILENAME, FAILED_FILES_FILENAME
+    MANUAL_REVIEW_FILENAME, FAILED_FILES_FILENAME, LOG_FILENAME
 )
 from src.utils.logger import setup_logger
 from src.utils.file_utils import get_image_files, ensure_dir

@@ -25,9 +25,9 @@ def preprocess_image(image_path, save_debug=False, debug_dir=None):
 
     # Simple table region detection: isolate bottom half
     # In NIRF reports, the score table is typically in the bottom half
-    h, w = gray.shape
-    header_region = gray[0:int(h*0.3), 0:w] # Top 30%
-    table_region = gray[int(h*0.3):h, 0:w] # Bottom 70%
+    h, w = enhanced.shape
+    header_region = enhanced[0:int(h*0.3), 0:w] # Top 30%
+    table_region = enhanced[int(h*0.3):h, 0:w] # Bottom 70%
 
     # Deskew (simplified logic using minAreaRect)
     deskewed_table = desk_image(table_region)

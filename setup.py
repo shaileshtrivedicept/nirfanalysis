@@ -11,7 +11,9 @@ setup(
         "numpy",
         "pillow",
         "rapidfuzz",
-        "pytest"
+        "pytest",
+        "streamlit",
+        "easyocr"
     ],
     entry_points={
         "console_scripts": [

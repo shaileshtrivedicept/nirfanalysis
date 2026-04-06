@@ -12,6 +12,7 @@ A robust, end-to-end image-to-dataset extraction pipeline for NIRF-style institu
 2.  **OCR Extraction:**
     *   Separate OCR for Header (title) and Table regions.
     *   Context-aware cleanup (regex-based corrections for O/0, I/1, FPPP, etc.).
+    *   **Engine:** Supports Tesseract (recommended) and EasyOCR (automatic fallback).
 3.  **Structure-Aware Parsing:**
     *   Identifies "Score" and "Total" rows.
     *   Maps numeric sequences to subcategories based on expected NIRF order.

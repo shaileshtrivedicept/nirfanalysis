@@ -3,20 +3,42 @@ from PIL import Image
 import os
 import cv2
 import re
+import numpy as np
 from src.ocr.preprocess import preprocess_image
 
 class OCRExtractor:
     def __init__(self, engine="tesseract"):
         self.engine = engine.lower()
-        if self.engine == "tesseract":
-            pass
+        self.tesseract_available = self._check_tesseract()
+        self.easyocr_reader = None
+
+        if self.engine == "tesseract" and not self.tesseract_available:
+            print("Tesseract not found. Falling back to EasyOCR.")
+            self.engine = "easyocr"
+
+        if self.engine == "easyocr":
+            try:
+                import easyocr
+                self.easyocr_reader = easyocr.Reader(['en'])
+            except ImportError:
+                print("EasyOCR not installed. OCR will fail.")
+
         elif self.engine == "paddle":
             try:
                 from paddleocr import PaddleOCR
                 self.ocr = PaddleOCR(use_angle_cls=True, lang='en')
             except ImportError:
-                print("PaddleOCR not installed. Falling back to tesseract.")
-                self.engine = "tesseract"
+                print("PaddleOCR not installed. Falling back to EasyOCR.")
+                self.engine = "easyocr"
+                import easyocr
+                self.easyocr_reader = easyocr.Reader(['en'])
+
+    def _check_tesseract(self):
+        try:
+            pytesseract.get_tesseract_version()
+            return True
+        except Exception:
+            return False
 
     def extract_text(self, image_path, preprocess=True, save_debug=False, debug_dir=None):
         """
@@ -25,11 +47,7 @@ class OCRExtractor:
         """
         if preprocess:
             header_img, table_img = preprocess_image(image_path, save_debug=save_debug, debug_dir=debug_dir)
-            if header_img is not None and table_img is not None:
-                pil_header = Image.fromarray(header_img)
-                pil_table = Image.fromarray(table_img)
-            else:
-                # Fallback to simple load if preprocess fails
+            if header_img is None or table_img is None:
                 img = Image.open(image_path)
                 return self._extract_full_text(img)
         else:
@@ -37,13 +55,23 @@ class OCRExtractor:
             return self._extract_full_text(img)
 
         if self.engine == "tesseract":
-            header_text = pytesseract.image_to_string(pil_header)
-            table_text = pytesseract.image_to_string(pil_table)
+            header_text = pytesseract.image_to_string(Image.fromarray(header_img))
+            table_text = pytesseract.image_to_string(Image.fromarray(table_img))
+            return header_text, table_text, 0.85
 
-            # Simplified confidence (Tesseract doesn't provide it directly here)
-            # A production-ready version would use image_to_data
-            confidence = 0.85
-            return header_text, table_text, confidence
+        elif self.engine == "easyocr":
+            if self.easyocr_reader:
+                res_header = self.easyocr_reader.readtext(header_img)
+                res_table = self.easyocr_reader.readtext(table_img)
+
+                header_text = "\n".join([text for (bbox, text, prob) in res_header])
+                table_text = "\n".join([text for (bbox, text, prob) in res_table])
+
+                conf_h = sum([prob for (bbox, text, prob) in res_header]) / len(res_header) if res_header else 0.8
+                conf_t = sum([prob for (bbox, text, prob) in res_table]) / len(res_table) if res_table else 0.8
+
+                return header_text, table_text, (conf_h + conf_t) / 2
+            return "", "", 0.0
 
         elif self.engine == "paddle":
             # Simplified example for PaddleOCR on regions
@@ -60,10 +88,18 @@ class OCRExtractor:
         else:
             raise ValueError(f"Unsupported OCR engine: {self.engine}")
 
-    def _extract_full_text(self, pil_img):
+    def _extract_full_text(self, img):
         """Helper to extract text from a full image."""
+        if isinstance(img, Image.Image):
+            img = np.array(img)
+
         if self.engine == "tesseract":
-            return "", pytesseract.image_to_string(pil_img), 0.8
+            return "", pytesseract.image_to_string(img), 0.8
+        elif self.engine == "easyocr" and self.easyocr_reader:
+            res = self.easyocr_reader.readtext(img)
+            text = "\n".join([text for (bbox, text, prob) in res])
+            conf = sum([prob for (bbox, text, prob) in res]) / len(res) if res else 0.8
+            return "", text, conf
         return "", "", 0.0
 
     @staticmethod
@@ -84,17 +120,11 @@ class OCRExtractor:
         cleaned_lines = []
 
         for line in lines:
-            # 1. Standardize spacing and casing
             line = line.strip().upper()
-
-            # 2. Targeted subcategory label correction (FPPP commonly misread)
             line = re.sub(r'FP[FSP][FP]', 'FPPP', line)
             line = re.sub(r'TL[ \-]R', 'TLR', line)
 
-            # 3. Context-aware digit correction using regex
-            # Only replace O with 0 or I with 1 when they are adjacent to digits
-            # and within a numeric context (e.g., 5O.5 -> 50.5)
-            line = re.sub(r'(\d)[O0o](\d)', r'\1 0 \2', line) # temporarily separate to avoid multiple replacements
+            line = re.sub(r'(\d)[O0o](\d)', r'\1 0 \2', line)
             line = line.replace(' 0 ', '0')
             line = re.sub(r'(\d)[O0o]', r'\1 0', line)
             line = line.replace(' 0', '0')
